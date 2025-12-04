@@ -1,0 +1,8 @@
+# dir
+__keys
+__pycache__
+.venv
+
+# file
+*.log
+.env
