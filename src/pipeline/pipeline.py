@@ -5,7 +5,7 @@ import os
 import time
 from tqdm import tqdm
 
-from src.utils import get_logger
+import logging
 from src.clients import AzureClientManager
 from src.processors import (
     PDFDownloader, TextExtractor, MetadataExtractor,
@@ -13,7 +13,7 @@ from src.processors import (
 )
 from src.storage import SearchIndexer, CosmosStorage
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PDFProcessingPipeline:

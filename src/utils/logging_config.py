@@ -1,59 +1,36 @@
-"""
-Logging configuration for the PDF processing pipeline
-"""
+"""Logging configuration."""
+
 import logging
-import pickle
+import sys
+from datetime import datetime
 
-
-def configure_logging():
-    """Configure logging to show progress but hide detailed HTTP requests"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("pdf_processing.log"),
-            logging.StreamHandler()
-        ]
+def setup_logging(level: str = "INFO") -> None:
+    """Setup logging configuration."""
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Suppress verbose Azure SDK logging
-    logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
-    logging.getLogger("azure.cosmos").setLevel(logging.WARNING)
-    logging.getLogger("azure.storage").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("azure.search").setLevel(logging.WARNING)
-    logging.getLogger("requests").setLevel(logging.WARNING)
-    logging.getLogger("openai").setLevel(logging.WARNING)
-    logging.getLogger("azure.openai").setLevel(logging.WARNING)
-    logging.getLogger("aiohttp").setLevel(logging.WARNING)
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
     
-    return logging.getLogger(__name__)
-
-
-def get_logger(name):
-    """Get a logger instance for a module"""
-    return logging.getLogger(name)
-
-
-def unpickle_list(file_path):
-    """Load a list from a pickle file"""
-    try:
-        with open(file_path, 'rb') as f:
-            return pickle.load(f)
-    except Exception as e:
-        print(f"Error loading pickle file {file_path}: {e}")
-        return []
-
-
-def divide_list(items, total_servers, server_id):
-    """Divide a list among multiple servers"""
-    if not items or total_servers <= 0 or server_id < 0 or server_id >= total_servers:
-        return []
+    # File handler
+    log_filename = f"pdf_processing_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setFormatter(formatter)
     
-    chunk_size = len(items) // total_servers
-    remainder = len(items) % total_servers
+    # Root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, level.upper()))
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
     
-    start_idx = server_id * chunk_size + min(server_id, remainder)
-    end_idx = start_idx + chunk_size + (1 if server_id < remainder else 0)
+    # Suppress verbose Azure SDK logs
+    logging.getLogger('azure').setLevel(logging.WARNING)
+    logging.getLogger('azure.core').setLevel(logging.WARNING)
+    logging.getLogger('azure.storage').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
     
-    return items[start_idx:end_idx]
+    logging.info(f"Logging configured - Level: {level}, File: {log_filename}")

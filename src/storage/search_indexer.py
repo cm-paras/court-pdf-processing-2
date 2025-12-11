@@ -6,9 +6,9 @@ import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from src.utils import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SearchIndexer:
@@ -175,27 +175,40 @@ class SearchIndexer:
                 if hasattr(vector, 'tolist'):
                     vector = vector.tolist()
                 
+                from datetime import datetime
+                
+                # Handle date conversion
+                date_str = metadata.get("Date of Judgment", "")
+                date_value = None
+                if date_str and date_str.strip():
+                    try:
+                        date_value = datetime.fromisoformat(date_str.replace('Z', '+00:00')).isoformat()
+                    except:
+                        date_value = None
+                
                 search_doc = {
                     "@search.action": "upload",
                     "id": chunk["id"],
-                    "text": chunk["text"],
-                    "embedding": vector,
-                    "metadata_CaseName": metadata.get("Case Name", "Unknown"),
-                    "metadata_Citation": metadata.get("Citation", "Unknown"),
-                    "metadata_CaseNumber": metadata.get("Case Number", "Unknown"),
-                    "metadata_DateOfJudgment": metadata.get("Date of Judgment", ""),
-                    "metadata_Bench": metadata.get("Bench", ""),
-                    "metadata_SubjectMatter": metadata.get("Subject Matter", ""),
-                    "metadata_Keywords": keywords,
-                    "metadata_Summary": metadata.get("Summary", ""),
-                    "metadata_PetitionerAdvocates": metadata.get("Petitioner Advocates", ""),
-                    "metadata_RespondentAdvocates": metadata.get("Respondent Advocates", ""),
-                    "metadata_Court": metadata.get("Court", ""),
-                    "metadata_OriginalJudgmentURL": metadata.get("Original Judgment URL", ""),
-                    "metadata_ChunkId": int(metadata.get("chunk_id", 0)),
-                    "metadata_ChunkTotal": int(metadata.get("chunk_total", 0)),
-                    "metadata_DocumentId": metadata.get("document_id", "")
+                    "pdf_id": metadata.get("document_id", ""),
+                    "content": chunk["text"],
+                    "content_vector": vector,
+                    "chunk_index": int(metadata.get("chunk_id", 0)),
+                    "chunk_total": int(metadata.get("chunk_total", 0)),
+                    "case_name": metadata.get("case_name", "Unknown"),
+                    "case_number": metadata.get("case_number", "Unknown"),
+                    "citation": metadata.get("citation", "Unknown"),
+                    "bench": metadata.get("bench", ""),
+                    "court": metadata.get("court", ""),
+                    "summary": metadata.get("summary", ""),
+                    "keywords": metadata.get("keywords", []),
+                    "petitioner_advocates": metadata.get("petitioner_advocates", []),
+                    "respondent_advocates": metadata.get("respondent_advocates", []),
+                    "created_at": datetime.utcnow().isoformat() + 'Z'
                 }
+                
+                # Only add date if valid
+                if date_value:
+                    search_doc["date_of_judgment"] = date_value
                 search_documents.append(search_doc)
             except Exception as e:
                 logger.error(f"Error preparing document {chunk.get('id', 'unknown')}: {e}")
@@ -286,7 +299,7 @@ class SearchIndexer:
             
             search_results = self.search_client.search(
                 search_text="*",
-                filter=f"metadata_DocumentId eq '{identifier}'",
+                filter=f"pdf_id eq '{identifier}'",
                 select="id",
                 top=1
             )

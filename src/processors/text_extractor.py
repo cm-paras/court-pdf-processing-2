@@ -4,9 +4,9 @@ Text extraction from PDF files
 import fitz
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from src.utils import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class TextExtractor:

@@ -1,4 +1,4 @@
 """Pipeline orchestration module"""
-from .pipeline import PDFProcessingPipeline
+from .pdf_processor import PDFProcessor
 
-__all__ = ['PDFProcessingPipeline']
+__all__ = ['PDFProcessor']

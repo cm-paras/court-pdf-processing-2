@@ -1,0 +1,104 @@
+"""Azure Cognitive Search indexer."""
+
+import logging
+from typing import List, Dict, Any
+from datetime import datetime
+from azure.search.documents import SearchClient
+from azure.core.credentials import AzureKeyCredential
+
+from ..config.settings import AZURE_CONFIG
+from ..models.document import Document, Chunk, ChunkStatus
+from ..utils.retry import retry_with_backoff
+
+logger = logging.getLogger(__name__)
+
+class SearchIndexer:
+    """Indexes validated chunks in Azure Cognitive Search."""
+    
+    def __init__(self):
+        self.client = SearchClient(
+            endpoint=AZURE_CONFIG.SEARCH_ENDPOINT,
+            index_name=AZURE_CONFIG.SEARCH_INDEX_NAME,
+            credential=AzureKeyCredential(AZURE_CONFIG.SEARCH_KEY)
+        )
+    
+    def index_chunks(self, document: Document, chunks: List[Chunk]) -> List[str]:
+        """Index valid chunks in Azure Search."""
+        document.processing_timestamps.indexing_start = datetime.utcnow()
+        
+        try:
+            # Filter chunks ready for indexing
+            valid_chunks = [
+                chunk for chunk in chunks 
+                if (chunk.status == ChunkStatus.EMBEDDED and 
+                    len(chunk.text.strip()) >= 150 and
+                    len(chunk.embedding_vector) > 0)
+            ]
+            
+            if not valid_chunks:
+                logger.warning(f"No valid chunks to index for document {document.pdf_id}")
+                return []
+            
+            logger.info(f"Indexing {len(valid_chunks)} chunks for document {document.pdf_id}")
+            
+            # Prepare documents for indexing
+            search_documents = []
+            for chunk in valid_chunks:
+                search_doc = self._prepare_search_document(chunk)
+                search_documents.append(search_doc)
+            
+            # Upload to search index
+            indexed_chunk_ids = self._upload_documents(search_documents)
+            
+            document.processing_timestamps.indexing_end = datetime.utcnow()
+            
+            logger.info(f"Successfully indexed {len(indexed_chunk_ids)} chunks for document {document.pdf_id}")
+            return indexed_chunk_ids
+            
+        except Exception as e:
+            logger.error(f"Indexing failed for document {document.pdf_id}: {e}")
+            document.processing_timestamps.indexing_end = datetime.utcnow()
+            raise
+    
+    def _prepare_search_document(self, chunk: Chunk) -> Dict[str, Any]:
+        """Prepare chunk for search index."""
+        metadata = chunk.metadata or {}
+        
+        return {
+            "id": chunk.chunk_id,
+            "pdf_id": chunk.pdf_id,
+            "content": chunk.text,
+            "content_vector": chunk.embedding_vector,
+            "chunk_index": chunk.chunk_index,
+            "chunk_total": chunk.chunk_total,
+            "case_name": metadata.get("case_name", ""),
+            "case_number": metadata.get("case_number", ""),
+            "citation": metadata.get("citation", ""),
+            "date_of_judgment": metadata.get("date_of_judgment", ""),
+            "bench": metadata.get("bench", ""),
+            "court": metadata.get("court", ""),
+            "summary": metadata.get("summary", ""),
+            "keywords": metadata.get("keywords", []),
+            "petitioner_advocates": metadata.get("petitioner_advocates", []),
+            "respondent_advocates": metadata.get("respondent_advocates", []),
+            "created_at": datetime.utcnow().isoformat()
+        }
+    
+    @retry_with_backoff()
+    def _upload_documents(self, documents: List[Dict[str, Any]]) -> List[str]:
+        """Upload documents to search index."""
+        try:
+            result = self.client.upload_documents(documents)
+            
+            successful_ids = []
+            for item in result:
+                if item.succeeded:
+                    successful_ids.append(item.key)
+                else:
+                    logger.error(f"Failed to index document {item.key}: {item.error_message}")
+            
+            return successful_ids
+            
+        except Exception as e:
+            logger.error(f"Search index upload failed: {e}")
+            raise
