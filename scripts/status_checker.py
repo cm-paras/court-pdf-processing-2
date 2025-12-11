@@ -18,12 +18,13 @@ from collections import defaultdict
 # Add project root to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.config import Config
-from src.clients import AzureClientManager
-from src.storage import CosmosStorage, SearchIndexer
-from src.utils import configure_logging
+from src.config.config import Config
+from src.clients.azure_clients import AzureClientManager
+from src.storage.cosmos_storage import CosmosStorage
+from src.storage.search_indexer import SearchIndexer
+import logging
 
-logger = configure_logging()
+logging.basicConfig(level=logging.INFO)
 
 
 class PipelineStatusChecker:
@@ -137,7 +138,7 @@ class PipelineStatusChecker:
                     print("Analyzing document structure...")
                     sample_results = search_client.search(
                         search_text="*",
-                        select="metadata_DocumentId,metadata_ChunkId,metadata_ChunkTotal",
+                        select="pdf_id,chunk_index,chunk_total",
                         top=100  # Reduced from 1000 to prevent timeout
                     )
                     
@@ -146,11 +147,11 @@ class PipelineStatusChecker:
                     chunk_stats = defaultdict(int)
                     
                     for result in sample_results:
-                        doc_id = result.get("metadata_DocumentId")
+                        doc_id = result.get("pdf_id")
                         if doc_id:
                             unique_documents.add(doc_id)
                         
-                        chunk_total = result.get("metadata_ChunkTotal", 0)
+                        chunk_total = result.get("chunk_total", 0)
                         if chunk_total:
                             chunk_stats[chunk_total] += 1
                     
