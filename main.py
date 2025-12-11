@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--url_file", default="url.pkl", help="Path to URL pickle file")
     parser.add_argument("--clear_index", action="store_true", help="Clear search index before processing")
+    parser.add_argument("--index_only", action="store_true", help="Only index documents from Cosmos DB (skip PDF processing)")
     
     args = parser.parse_args()
     
@@ -81,6 +82,22 @@ def main():
         
         # Initialize processor
         processor = PDFProcessor()
+        
+        if args.index_only:
+            # Only run indexing from Cosmos DB
+            from src.pipeline.pipeline import PDFProcessingPipeline
+            from src.config.config import Config
+            
+            config = Config()
+            pipeline = PDFProcessingPipeline(config)
+            indexing_results = pipeline.index_from_cosmos()
+            
+            logging.info("=" * 50)
+            logging.info("INDEXING SUMMARY")
+            logging.info("=" * 50)
+            logging.info(f"Documents in Cosmos: {indexing_results['total_documents']}")
+            logging.info(f"Chunks indexed: {indexing_results['indexed_chunks']}")
+            return
         
         # Process PDFs
         results = processor.process_batch(pdf_urls, args.max_pdfs)
