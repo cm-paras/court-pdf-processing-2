@@ -134,12 +134,12 @@ class PipelineStatusChecker:
                 print(f"📈 Total Indexed Chunks: {total_indexed}")
                 
                 if total_indexed > 0:
-                    # Get sample documents to analyze structure
+                    # Get all documents to analyze structure
                     print("Analyzing document structure...")
                     sample_results = search_client.search(
                         search_text="*",
                         select="pdf_id,chunk_index,chunk_total",
-                        top=100  # Reduced from 1000 to prevent timeout
+                        top=1000  # Get more documents to get accurate count
                     )
                     
                     # Count unique documents

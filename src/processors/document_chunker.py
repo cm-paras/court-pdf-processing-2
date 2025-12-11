@@ -62,7 +62,8 @@ class DocumentChunker:
             document_chunks.append({
                 "id": chunk_id,
                 "text": chunk_text,
-                "metadata": chunk_metadata
+                "metadata": chunk_metadata,
+                "blob_name": blob_name
             })
         
         return document_chunks

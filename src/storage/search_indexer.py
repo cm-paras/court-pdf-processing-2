@@ -186,12 +186,17 @@ class SearchIndexer:
                     except:
                         date_value = None
                 
+                # Get document ID from chunk metadata
+                document_id = chunk.get("blob_name", "")
+                if not document_id:
+                    document_id = metadata.get("document_id", "")
+                
                 search_doc = {
                     "@search.action": "upload",
                     "id": chunk["id"],
-                    "pdf_id": metadata.get("document_id", ""),
                     "content": chunk["text"],
                     "content_vector": vector,
+                    "pdf_id": document_id,
                     "chunk_index": int(metadata.get("chunk_id", 0)),
                     "chunk_total": int(metadata.get("chunk_total", 0)),
                     "case_name": metadata.get("case_name", "Unknown"),
@@ -202,13 +207,36 @@ class SearchIndexer:
                     "summary": metadata.get("summary", ""),
                     "keywords": metadata.get("keywords", []),
                     "petitioner_advocates": metadata.get("petitioner_advocates", []),
-                    "respondent_advocates": metadata.get("respondent_advocates", []),
-                    "created_at": datetime.utcnow().isoformat() + 'Z'
+                    "respondent_advocates": metadata.get("respondent_advocates", [])
                 }
                 
-                # Only add date if valid
-                if date_value:
-                    search_doc["date_of_judgment"] = date_value
+                # Handle date conversion for search index
+                date_str = metadata.get("date_of_judgment", "")
+                if date_str and date_str.strip():
+                    try:
+                        from datetime import datetime
+                        # Try to parse and convert to proper datetime format
+                        if 'T' in date_str:
+                            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                        else:
+                            # Assume it's a date string, try common formats
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+                                try:
+                                    dt = datetime.strptime(date_str, fmt)
+                                    break
+                                except:
+                                    continue
+                            else:
+                                dt = None
+                        
+                        if dt:
+                            search_doc["date_of_judgment"] = dt.isoformat() + 'Z'
+                    except Exception as e:
+                        logger.warning(f"Could not parse date '{date_str}': {e}")
+                
+                # Add created_at timestamp
+                from datetime import datetime
+                search_doc["created_at"] = datetime.utcnow().isoformat() + 'Z'
                 search_documents.append(search_doc)
             except Exception as e:
                 logger.error(f"Error preparing document {chunk.get('id', 'unknown')}: {e}")
