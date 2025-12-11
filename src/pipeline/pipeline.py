@@ -62,19 +62,9 @@ class PDFProcessingPipeline:
         results = []
         
         try:
-            # Filter out already processed documents (batch check)
-            existing_docs = self.cosmos_storage.documents_exist_batch(blob_names)
-            unprocessed_blobs = [blob for blob in blob_names if blob not in existing_docs]
-            
-            if not unprocessed_blobs:
-                print(f"All {len(blob_names)} documents already processed, skipping batch")
-                return results
-            
-            print(f"Processing {len(unprocessed_blobs)}/{len(blob_names)} new documents (skipped {len(existing_docs)} existing)")
-            
             # Stage 1: Download PDFs
-            print(f"[Stage 1/4] Downloading {len(unprocessed_blobs)} PDFs...")
-            local_paths_dict = self.downloader.download_batch(unprocessed_blobs)
+            print(f"[Stage 1/4] Downloading {len(blob_names)} PDFs...")
+            local_paths_dict = self.downloader.download_batch(blob_names)
             
             if not local_paths_dict:
                 logger.warning("No PDFs were successfully downloaded")
@@ -201,6 +191,11 @@ class PDFProcessingPipeline:
         
         if not documents_to_index:
             return {"total_documents": len(all_documents), "indexed_chunks": 0}
+        
+        # Partition documents across servers for parallel indexing
+        total_docs = len(documents_to_index)
+        documents_to_index = documents_to_index[self.server_number::self.server_count]
+        print(f"Server {self.server_number + 1}/{self.server_count} processing {len(documents_to_index)} of {total_docs} documents")
         
         # Process in batches
         indexed_count = 0
