@@ -322,20 +322,55 @@ class SearchIndexer:
     def is_document_indexed(self, blob_name):
         """Check if a document is already indexed"""
         try:
-            import re
-            identifier = re.sub(r'[^\w\-]', '_', blob_name)
-            
             search_results = self.search_client.search(
                 search_text="*",
-                filter=f"pdf_id eq '{identifier}'",
-                select="id",
+                filter=f"pdf_id eq '{blob_name}'",
+                select="pdf_id",
                 top=1
             )
-            
             for result in search_results:
                 return True
-            
             return False
         except Exception as e:
             logger.warning(f"Error checking if document {blob_name} is indexed: {e}")
             return False
+
+    def documents_indexed_batch(self, blob_urls):
+        """Check which documents are already indexed in Azure Search (batch mode)"""
+        try:
+            if not blob_urls:
+                return set()
+
+            indexed = set()
+            batch_size = 100
+            import time
+            start_time = time.time()
+            for i in range(0, len(blob_urls), batch_size):
+                batch = blob_urls[i:i + batch_size]
+                from urllib.parse import quote
+                encoded_batch = [quote(url, safe="") for url in batch]
+                blob_filter = " or ".join([f"pdf_id eq '{encoded}'" for encoded in encoded_batch])
+                logger.debug(f"Checking Azure Search index for batch {i // batch_size + 1} ({len(batch)} PDFs)...")
+                try:
+                    search_results = self.search_client.search(
+                        search_text="*",
+                        filter=blob_filter,
+                        select="pdf_id",
+                        top=min(len(batch), 50)
+                    )
+                    for result in search_results:
+                        if "pdf_id" in result:
+                            indexed.add(result["pdf_id"])
+                except Exception as batch_error:
+                    logger.warning(f"Error checking batch {i // batch_size + 1}: {batch_error}")
+                time.sleep(0.2)
+
+                if time.time() - start_time > 60:
+                    logger.warning("Batch index check taking too long, stopping early.")
+                    break
+
+            logger.info(f"Batch check complete: {len(indexed)} of {len(blob_urls)} PDFs already indexed in Azure Search")
+            return indexed
+        except Exception as e:
+            logger.warning(f"Error performing batch index check: {e}")
+            return set()

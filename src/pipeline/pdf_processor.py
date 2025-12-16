@@ -1,5 +1,6 @@
 """Main PDF processing pipeline."""
 
+import os
 import logging
 from typing import List, Optional
 
@@ -92,6 +93,16 @@ class PDFProcessor:
         except Exception as e:
             logger.error(f"Processing failed for PDF {pdf_id}: {e}")
             return False
+        finally:
+            # Clean up downloaded PDF files
+            try:
+                if 'local_paths' in locals() and local_paths:
+                    for path in local_paths.values():
+                        if path and os.path.exists(path):
+                            os.remove(path)
+                            logger.debug(f"Deleted temporary file: {path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temporary files for {pdf_id}: {cleanup_error}")
     
 
     
@@ -105,15 +116,56 @@ class PDFProcessor:
         }
         
         pdfs_to_process = pdf_urls[:max_pdfs] if max_pdfs else pdf_urls
-        
+        blob_urls = [url for url, _ in pdfs_to_process]
+
+        # Batch check for existing documents in Cosmos DB
+        existing_in_cosmos = self.storage.documents_exist_batch(blob_urls)
+        logger.info(f"{len(existing_in_cosmos)} PDFs already have metadata in Cosmos DB")
+
+        # Batch check for indexed documents in Azure Search
+        try:
+            indexed_in_search = self.indexer.documents_indexed_batch(blob_urls)
+            logger.info(f"{len(indexed_in_search)} PDFs already indexed in Azure Search")
+        except Exception as e:
+            logger.warning(f"Batch index check failed, falling back to per-document check: {e}")
+            indexed_in_search = set()
+
         for blob_url, pdf_id in pdfs_to_process:
             results['total'] += 1
-            
-            # Check if already processed
-            if self.storage.document_exists(pdf_id) and self.indexer.is_document_indexed(pdf_id):
-                logger.info(f"Skipping already processed PDF {pdf_id}")
-                results['skipped'] += 1
-                continue
+
+            # Skip if already processed
+            if blob_url in existing_in_cosmos:
+                if blob_url in indexed_in_search:
+                    logger.info(f"Skipping already processed PDF for blob_url: {blob_url}")
+                    results['skipped'] += 1
+                    continue
+                else:
+                    logger.info(f"Document {blob_url} found in Cosmos DB but not indexed. Indexing now...")
+                    try:
+                        existing_doc = self.storage.get_document_by_blob_name(blob_url)
+                        if existing_doc:
+                            metadata = existing_doc.get("metadata", {})
+                            text_sample = existing_doc.get("text_sample", "")
+                            documents = [{
+                                "blob_name": blob_url,
+                                "success": True,
+                                "metadata": metadata,
+                                "text": text_sample
+                            }]
+                            chunks = self.chunker.chunk_batch(documents)
+                            if chunks:
+                                chunks_with_embeddings = self.embedding_generator.generate_embeddings(chunks)
+                                succeeded, failed = self.indexer.upload_chunks(chunks_with_embeddings)
+                                if succeeded > 0:
+                                    logger.info(f"Indexed existing document {blob_url} successfully.")
+                                    results['skipped'] += 1
+                                    continue
+                                else:
+                                    logger.warning(f"Failed to index existing document {blob_url}. Proceeding to reprocess.")
+                        else:
+                            logger.warning(f"Document {blob_url} metadata not found in Cosmos DB. Proceeding to reprocess.")
+                    except Exception as e:
+                        logger.error(f"Error indexing existing document {blob_url}: {e}")
             
             try:
                 success = self.process_single_pdf(blob_url, pdf_id)

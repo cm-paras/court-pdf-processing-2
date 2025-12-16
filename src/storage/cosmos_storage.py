@@ -240,3 +240,22 @@ class CosmosStorage:
         except Exception as e:
             logger.error(f"Error querying documents from Cosmos DB: {e}")
             return []
+
+    def get_document_by_blob_name(self, blob_name):
+        """
+        Retrieve a single document from Cosmos DB by blob_name.
+        Much faster than querying all documents.
+        """
+        try:
+            query = f"SELECT * FROM c WHERE c.blob_name = '{blob_name}'"
+            results = list(self.container.query_items(
+                query=query,
+                enable_cross_partition_query=True,
+                max_item_count=1
+            ))
+            if results:
+                return results[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching document by blob_name {blob_name}: {e}")
+            return None
