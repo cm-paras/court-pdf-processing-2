@@ -60,6 +60,7 @@ def main():
     parser.add_argument("--url_file", default="url.pkl", help="Path to URL pickle file")
     parser.add_argument("--clear_index", action="store_true", help="Clear search index before processing")
     parser.add_argument("--index_only", action="store_true", help="Only index documents from Cosmos DB (skip PDF processing)")
+    parser.add_argument("--metadata_only", action="store_true", help="Only extract metadata from PDFs (skip indexing)")
     
     args = parser.parse_args()
     
@@ -83,33 +84,46 @@ def main():
         # Initialize processor
         processor = PDFProcessor()
         
-        if args.index_only:
-            # Only run indexing from Cosmos DB
+        # Determine processing mode
+        if args.metadata_only:
+            logging.info("Running in METADATA-ONLY mode")
+            results = processor.process_batch(pdf_urls, args.max_pdfs, mode="metadata")
+            logging.info("=" * 50)
+            logging.info("METADATA PROCESSING SUMMARY")
+            logging.info("=" * 50)
+            logging.info(f"Total PDFs: {results['total']}")
+            logging.info(f"Successful: {results['successful']}")
+            logging.info(f"Failed: {results['failed']}")
+            logging.info(f"Success Rate: {results['successful']/results['total']*100:.1f}%")
+            return
+
+        elif args.index_only:
+            logging.info("Running in INDEX-ONLY mode")
             from src.pipeline.pipeline import PDFProcessingPipeline
             from src.config.config import Config
-            
+
             config = Config()
             pipeline = PDFProcessingPipeline(config)
             indexing_results = pipeline.index_from_cosmos()
-            
+
             logging.info("=" * 50)
             logging.info("INDEXING SUMMARY")
             logging.info("=" * 50)
             logging.info(f"Documents in Cosmos: {indexing_results['total_documents']}")
             logging.info(f"Chunks indexed: {indexing_results['indexed_chunks']}")
             return
-        
-        # Process PDFs
-        results = processor.process_batch(pdf_urls, args.max_pdfs)
-        
-        # Print summary
-        logging.info("=" * 50)
-        logging.info("PROCESSING SUMMARY")
-        logging.info("=" * 50)
-        logging.info(f"Total PDFs: {results['total']}")
-        logging.info(f"Successful: {results['successful']}")
-        logging.info(f"Failed: {results['failed']}")
-        logging.info(f"Success Rate: {results['successful']/results['total']*100:.1f}%")
+
+        else:
+            logging.info("Running in FULL PROCESSING mode (metadata + indexing)")
+            results = processor.process_batch(pdf_urls, args.max_pdfs, mode="full")
+
+            logging.info("=" * 50)
+            logging.info("FULL PROCESSING SUMMARY")
+            logging.info("=" * 50)
+            logging.info(f"Total PDFs: {results['total']}")
+            logging.info(f"Successful: {results['successful']}")
+            logging.info(f"Failed: {results['failed']}")
+            logging.info(f"Success Rate: {results['successful']/results['total']*100:.1f}%")
         
     except Exception as e:
         logging.error(f"Pipeline failed: {e}")
