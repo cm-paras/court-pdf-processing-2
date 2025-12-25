@@ -75,29 +75,8 @@ def main():
         if args.clear_index:
             clear_search_index()
         
-        # Load PDF URLs
-        pdf_urls = load_pdf_urls(args.url_file)
-        if not pdf_urls:
-            logging.error("No PDF URLs loaded, exiting")
-            return
-        
-        # Initialize processor
-        processor = PDFProcessor()
-        
         # Determine processing mode
-        if args.metadata_only:
-            logging.info("Running in METADATA-ONLY mode")
-            results = processor.process_batch(pdf_urls, args.max_pdfs, mode="metadata")
-            logging.info("=" * 50)
-            logging.info("METADATA PROCESSING SUMMARY")
-            logging.info("=" * 50)
-            logging.info(f"Total PDFs: {results['total']}")
-            logging.info(f"Successful: {results['successful']}")
-            logging.info(f"Failed: {results['failed']}")
-            logging.info(f"Success Rate: {results['successful']/results['total']*100:.1f}%")
-            return
-
-        elif args.index_only:
+        if args.index_only:
             logging.info("Running in INDEX-ONLY mode")
             from src.pipeline.pipeline import PDFProcessingPipeline
             from src.config.config import Config
@@ -111,6 +90,27 @@ def main():
             logging.info("=" * 50)
             logging.info(f"Documents in Cosmos: {indexing_results['total_documents']}")
             logging.info(f"Chunks indexed: {indexing_results['indexed_chunks']}")
+            return
+        
+        # Load PDF URLs (only needed for metadata_only and full processing)
+        pdf_urls = load_pdf_urls(args.url_file)
+        if not pdf_urls:
+            logging.error("No PDF URLs loaded, exiting")
+            return
+        
+        # Initialize processor
+        processor = PDFProcessor()
+        
+        if args.metadata_only:
+            logging.info("Running in METADATA-ONLY mode")
+            results = processor.process_batch(pdf_urls, args.max_pdfs, mode="metadata")
+            logging.info("=" * 50)
+            logging.info("METADATA PROCESSING SUMMARY")
+            logging.info("=" * 50)
+            logging.info(f"Total PDFs: {results['total']}")
+            logging.info(f"Successful: {results['successful']}")
+            logging.info(f"Failed: {results['failed']}")
+            logging.info(f"Success Rate: {results['successful']/results['total']*100:.1f}%")
             return
 
         else:
